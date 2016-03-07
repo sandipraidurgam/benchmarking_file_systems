@@ -11,6 +11,11 @@ import com.amazonaws.services.s3.transfer.TransferManager;
 
 import java.io.File;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.List;
 
 
 class S3Benchmarker {
@@ -24,8 +29,8 @@ class S3Benchmarker {
     private BasicAWSCredentials awsCreds;
     private AmazonS3 s3client;
 
-    private static String keyName        = "dummytoday.txt";
-    private static String uploadFileName = "dummytoday.txt";
+
+    private List<File> evaluationDirectories;
 
     public S3Benchmarker(){
         if(!setup()){
@@ -51,6 +56,7 @@ class S3Benchmarker {
 
 
         } catch (AmazonServiceException ase) {
+            ase.printStackTrace();
             System.out.println("Caught an AmazonServiceException, which " +
                     "means your request made it " +
                     "to Amazon S3, but was rejected with an error response" +
@@ -77,11 +83,19 @@ class S3Benchmarker {
     }
 
     private void createOneFileAtATime() throws IOException {
-        System.out.println("Uploading a new object to S3 from a file\n");
-        File file = new File(uploadFileName);
-        file.createNewFile();
-        s3client.putObject(new PutObjectRequest(
-                BUCKET_NAME, keyName, file));
+        File dirName = createDirectory();
+
+        for (int i = 1; i <= NUM_FILES ; i ++){
+            File file = new File(dirName.getPath() + File.separator + i+".txt");
+            file.createNewFile();
+        }
+
+
+        System.out.println("INFO : Uploading a  empty files to S3 ");
+        for (int i = 1; i <= NUM_FILES ; i ++){
+            s3client.putObject(new PutObjectRequest(BUCKET_NAME, i+".txt", dirName.getPath() + File.separator + i+".txt"));
+        }
+
     }
 
     /**
@@ -109,9 +123,42 @@ class S3Benchmarker {
                         "Creating the bucket " + BUCKET_NAME + " now");
                 s3client.createBucket(new CreateBucketRequest(BUCKET_NAME));
             }
+            evaluationDirectories = new ArrayList<File>();
             isSuccess = true;
         }
         return isSuccess;
+    }
+
+    private File createDirectory(){
+        //Create Directory to store the empty files
+        Date date = Calendar.getInstance().getTime();
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd_hhmmss");
+        String dirName = sdf.format(date);
+
+        String userHome = System.getProperty("user.home");
+        System.out.println("Creating empty directories locally in user' home directory");
+        File directory = new File(userHome+ File.separator+"cs597_s3_eval"+ File.separator + dirName);
+        directory.mkdirs();
+        //Store the directories which are created, this will help in cleaning up
+        evaluationDirectories.add(directory);
+        return directory;
+    }
+
+    /**
+     * Delete all empty files and directories which were created
+     */
+    protected void cleanup(){
+        //Delete all directories
+        for(File dir : evaluationDirectories){
+            dir.delete();
+        }
+    }
+
+    /**
+     *  Mail the benchmarking results
+     */
+    public void sendMail() {
+
     }
 }
 
@@ -119,5 +166,10 @@ public class MainS3{
     public static void main(String[] args) throws IOException {
         S3Benchmarker s3Benchmarker = new S3Benchmarker();
         s3Benchmarker.createEmptyFiles();
+
+        //Send mail after benchmarking finishes
+        s3Benchmarker.sendMail();
+        // Do a cleanup
+        s3Benchmarker.cleanup();
     }
 }
