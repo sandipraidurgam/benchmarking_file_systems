@@ -6,7 +6,9 @@ import com.amazonaws.regions.Regions;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.CreateBucketRequest;
+import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.PutObjectRequest;
+import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.services.s3.transfer.TransferManager;
 
 import java.io.File;
@@ -16,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
+import java.util.UUID;
 
 
 class S3Benchmarker {
@@ -26,9 +29,11 @@ class S3Benchmarker {
     // set number of files to 1000 by default
     private int NUM_FILES = 1000;
 
-    private BasicAWSCredentials awsCreds;
-    private AmazonS3 s3client;
 
+    private BasicAWSCredentials awsCreds;
+    private AmazonS3 s3Client;
+
+    private String DIR_NAME_S3;
 
     private List<File> evaluationDirectories;
 
@@ -48,7 +53,7 @@ class S3Benchmarker {
             createOneFileAtATime();
             createMultipleFilesInOneShot();
 
-            TransferManager tm = new TransferManager(s3client);
+            TransferManager tm = new TransferManager(s3Client);
 
 
             //  MultipleFileUpload upload = tm.uploadDirectory(BUCKET_NAME,
@@ -93,7 +98,9 @@ class S3Benchmarker {
 
         System.out.println("INFO : Uploading a  empty files to S3 ");
         for (int i = 1; i <= NUM_FILES ; i ++){
-            s3client.putObject(new PutObjectRequest(BUCKET_NAME, i+".txt", dirName.getPath() + File.separator + i+".txt"));
+            String key = DIR_NAME_S3+ File.separator + i+".txt";
+            String fileName = dirName.getPath() + File.separator + i+".txt";
+            s3Client.putObject(new PutObjectRequest(BUCKET_NAME, key, fileName));
         }
 
     }
@@ -108,20 +115,20 @@ class S3Benchmarker {
         AWS_ACCESS_KEY_ID = System.getenv("AWS_ACCESS_KEY_ID");
         AWS_SECRET_ACCESS_KEY = System.getenv("AWS_SECRET_ACCESS_KEY");
         BUCKET_NAME = System.getenv("BUCKET_NAME");
-        NUM_FILES = Integer.parseInt(System.getenv("NUM_FILES"));
-
+        //NUM_FILES = Integer.parseInt(System.getenv("NUM_FILES"));
+        NUM_FILES = 10;
         if (AWS_ACCESS_KEY_ID == null || AWS_SECRET_ACCESS_KEY == null || BUCKET_NAME == null) {
             isSuccess = false;
         }else{
             awsCreds = new BasicAWSCredentials(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY);
-            s3client = new AmazonS3Client(awsCreds);
-            s3client.setRegion(Region.getRegion(Regions.US_EAST_1));
+            s3Client = new AmazonS3Client(awsCreds);
+            s3Client.setRegion(Region.getRegion(Regions.US_EAST_1));
             // checks whether buckt exists or not, if not then create a new bucket
-            boolean bucketExist = s3client.doesBucketExist(BUCKET_NAME);
+            boolean bucketExist = s3Client.doesBucketExist(BUCKET_NAME);
             if(!bucketExist){
                 System.out.println("Bucket with name " + BUCKET_NAME + " does not exist, " +
                         "Creating the bucket " + BUCKET_NAME + " now");
-                s3client.createBucket(new CreateBucketRequest(BUCKET_NAME));
+                s3Client.createBucket(new CreateBucketRequest(BUCKET_NAME));
             }
             evaluationDirectories = new ArrayList<File>();
             isSuccess = true;
@@ -141,23 +148,24 @@ class S3Benchmarker {
         directory.mkdirs();
         //Store the directories which are created, this will help in cleaning up
         evaluationDirectories.add(directory);
+        DIR_NAME_S3 = "cs597_s3_eval"+ File.separator + dirName +"_"+ UUID.randomUUID();
         return directory;
     }
 
     /**
-     * Delete all empty files and directories which were created
+     * Delete all empty files and directories which were created localy and in s3 bucket
      */
     protected void cleanup(){
-        //Delete all directories
+        //Delete all directories created locally
         for(File dir : evaluationDirectories){
             dir.delete();
         }
-    }
 
-    /**
-     *  Mail the benchmarking results
-     */
-    public void sendMail() {
+        // empty the bucket
+        ObjectListing objects = s3Client.listObjects(BUCKET_NAME, DIR_NAME_S3);
+        for (S3ObjectSummary objectSummary : objects.getObjectSummaries()){
+            s3Client.deleteObject(BUCKET_NAME, objectSummary.getKey());
+        }
 
     }
 }
@@ -166,9 +174,6 @@ public class MainS3{
     public static void main(String[] args) throws IOException {
         S3Benchmarker s3Benchmarker = new S3Benchmarker();
         s3Benchmarker.createEmptyFiles();
-
-        //Send mail after benchmarking finishes
-        s3Benchmarker.sendMail();
         // Do a cleanup
         s3Benchmarker.cleanup();
     }
