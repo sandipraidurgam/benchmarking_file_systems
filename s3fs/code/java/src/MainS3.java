@@ -123,7 +123,7 @@ class S3Benchmarker {
             awsCreds = new BasicAWSCredentials(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY);
             s3Client = new AmazonS3Client(awsCreds);
             s3Client.setRegion(Region.getRegion(Regions.US_EAST_1));
-            // checks whether buckt exists or not, if not then create a new bucket
+            // checks whether bucket exists or not, if not then create a new bucket
             boolean bucketExist = s3Client.doesBucketExist(BUCKET_NAME);
             if(!bucketExist){
                 System.out.println("Bucket with name " + BUCKET_NAME + " does not exist, " +
